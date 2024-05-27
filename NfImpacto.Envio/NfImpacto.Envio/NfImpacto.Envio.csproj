@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>true</ImplicitUsings>
+    <UserSecretsId>dotnet-NfImpacto.Envio-fd060237-0634-4dfc-8346-c86928d5ab4d</UserSecretsId>
+	<RootNamespace>NfImpacto.Envio</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.102.2" />
+    <PackageReference Include="Dapper" Version="2.1.28" />
+    <PackageReference Include="ExcelDataReader.DataSet" Version="3.6.0" />
+    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.22.0" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.1.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+	<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
+	<PackageReference Include="NCrontab" Version="3.3.3" />
+	<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Domain\Queries\" />
+    <Folder Include="Files\Tests\" />
+    <Folder Include="Files\Templates\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Files\Templates\NFIMPACTO_TEMPLATE.xlsx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

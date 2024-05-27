@@ -1,0 +1,302 @@
+name: $(SourceBranchName)_$(Date:yyyyMMdd)$(Rev:.rr)
+
+trigger:
+  - release
+
+pool:
+  vmImage: 'windows-latest'
+
+variables:
+  solution: '**/NfImpacto.Envio.sln'
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+  servicoNfImpactoEnvio: 'NfImpacto.Envio\NfImpacto.Envio\bin\Release\net8.0-windows'
+
+stages:
+  - stage: Build
+    jobs:
+      - job:
+        displayName: 'Build Solution'
+        steps:
+            - task: NuGetToolInstaller@1
+
+            - task: NuGetCommand@2
+              inputs:
+                command: 'restore'
+                restoreSolution: '$(solution)'
+                feedsToUse: 'select'
+                vstsFeed: '79f3c258-62f0-41df-9f52-8b916da9e6b8'
+              displayName: 'Restore packages'
+
+            - task: VSBuild@1
+              inputs:
+                solution: '$(solution)'
+                msbuildArgs: '/p:DeployOnBuild=true /p:WebPublishMethod=Package /p:PackageAsSingleFile=true /p:SkipInvalidConfigurations=true'
+                platform: '$(buildPlatform)'
+                configuration: '$(buildConfiguration)'
+
+            - task: ArchiveFiles@2
+              displayName: 'Zip ServicoNfImpactoEnvio package'
+              inputs:
+                rootFolderOrFile: '$(Build.Repository.LocalPath)/$(servicoNfImpactoEnvio)'
+                includeRootFolder: false
+                archiveType: 'zip'
+                archiveFile: '$(Build.ArtifactStagingDirectory)/servicoNfImpactoEnvio.zip'
+                replaceExistingArchive: true  
+
+            - publish: $(Build.ArtifactStagingDirectory)
+              displayName: Publishing Artifacts
+              artifact: servicoNfImpactoEnvioArtifact
+
+  - stage: DeployDev
+    dependsOn: Build
+    displayName: Deploy DEV
+    variables:
+      - group: grp-dev
+    jobs:
+      - deployment: DEPLOY_SERVICE_NFIMPACTO_ENVIO
+        displayName: DEPLOY ServicoNfImpactoEnvio
+        pool:
+          name: DEV
+          demands: SERVER51
+        environment: TRANSPORTE-DEV
+        variables:
+          ServiceName: 'NFIMPACTO-ENVIO'
+          ApplicationFolder: 'D:\Servicos\NfImpacto.Envio\'
+          BinaryPathName: '$(ApplicationFolder)\NfImpacto.Envio.exe'
+          
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: git://Empresa/tools
+
+                - download: current
+                  artifact: servicoNfImpactoEnvioArtifact
+                  patterns: servicoNfImpactoEnvio.zip
+                  
+                - task: PowerShell@2
+                  displayName: 'Stop Service'
+                  inputs:
+                    filePath: 'powershell-gocd\Manage-WindowsService.ps1'
+                    arguments: '-Name $(ServiceName) -Action Stop -ErrorAction SilentlyContinue -WarningAction SilentlyContinue'
+
+                - task: ExtractFiles@1
+                  inputs:
+                    archiveFilePatterns: '$(Pipeline.Workspace)\servicoNfImpactoEnvioArtifact\servicoNfImpactoEnvio.zip'
+                    destinationFolder: '$(ApplicationFolder)'
+                    cleanDestinationFolder: false
+                    overwriteExistingFiles: true
+                    
+                - task: replacetokens@5
+                  inputs:
+                    rootDirectory: '$(ApplicationFolder)'
+                    targetFiles: '**/appsettings.*.json'
+                    encoding: 'auto'
+                    tokenPattern: 'octopus'
+                    writeBOM: true
+                    actionOnMissing: 'warn'
+                    keepToken: false
+                    actionOnNoFiles: 'continue'
+                    enableTransforms: false
+                    enableRecursion: false
+                    useLegacyPattern: false
+                    enableTelemetry: true                    
+                    
+                - task: PowerShell@2
+                  continueOnError: false
+                  displayName: 'Start Windows Service'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      Start-Service -Name "$(ServiceName)"
+                      
+  - stage: DeployQA
+    dependsOn: Build
+    displayName: Deploy QA
+    variables:
+      - group: grp-stg
+    jobs:
+      - deployment: DEPLOY_SERVICE_NFIMPACTO_ENVIO
+        displayName: DEPLOY ServicoNfImpactoEnvio
+        pool:
+          name: QA
+          demands: SERVER52
+        environment: TRANSPORTE-STG
+        variables:
+          ServiceName: 'NFIMPACTO-ENVIO'
+          ApplicationFolder: 'D:\Servicos\NfImpacto.Envio\'
+          BinaryPathName: '$(ApplicationFolder)\NfImpacto.Envio.exe'
+          
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: git://Empresa/tools
+
+                - download: current
+                  artifact: servicoNfImpactoEnvioArtifact
+                  patterns: servicoNfImpactoEnvio.zip
+                  
+                - task: PowerShell@2
+                  displayName: 'Stop Service'
+                  inputs:
+                    filePath: 'powershell-gocd\Manage-WindowsService.ps1'
+                    arguments: '-Name $(ServiceName) -Action Stop -ErrorAction SilentlyContinue -WarningAction SilentlyContinue'
+
+                - task: ExtractFiles@1
+                  inputs:
+                    archiveFilePatterns: '$(Pipeline.Workspace)\servicoNfImpactoEnvioArtifact\servicoNfImpactoEnvio.zip'
+                    destinationFolder: '$(ApplicationFolder)'
+                    cleanDestinationFolder: false
+                    overwriteExistingFiles: true
+                    
+                - task: replacetokens@5
+                  inputs:
+                    rootDirectory: '$(ApplicationFolder)'
+                    targetFiles: '**/appsettings.*.json'
+                    encoding: 'auto'
+                    tokenPattern: 'octopus'
+                    writeBOM: true
+                    actionOnMissing: 'warn'
+                    keepToken: false
+                    actionOnNoFiles: 'continue'
+                    enableTransforms: false
+                    enableRecursion: false
+                    useLegacyPattern: false
+                    enableTelemetry: true                    
+                    
+                - task: PowerShell@2
+                  continueOnError: false
+                  displayName: 'Start Windows Service'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      Start-Service -Name "$(ServiceName)"
+
+  - stage: DeployUAT
+    dependsOn: Build
+    displayName: Deploy UAT
+    variables:
+      - group: grp-uat
+    jobs:
+      - deployment: DEPLOY_SERVICE_NFIMPACTO_ENVIO
+        displayName: DEPLOY servicoNfImpactoEnvio
+        pool:
+          name: HOMO
+          demands: SERVER08
+        environment: TRANSPORTE-UAT
+        variables:
+          ServiceName: 'NFIMPACTO-ENVIO'
+          ApplicationFolder: 'D:\Servicos\NfImpacto.Envio\'
+          BinaryPathName: '$(ApplicationFolder)\NfImpacto.Envio.exe'
+          
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: git://Empresa/tools
+
+                - download: current
+                  artifact: servicoNfImpactoEnvioArtifact
+                  patterns: servicoNfImpactoEnvio.zip
+                  
+                - task: PowerShell@2
+                  displayName: 'Stop Service'
+                  inputs:
+                    filePath: 'powershell-gocd\Manage-WindowsService.ps1'
+                    arguments: '-Name $(ServiceName) -Action Stop -ErrorAction SilentlyContinue -WarningAction SilentlyContinue'
+
+                - task: ExtractFiles@1
+                  inputs:
+                    archiveFilePatterns: '$(Pipeline.Workspace)\servicoNfImpactoEnvioArtifact\servicoNfImpactoEnvio.zip'
+                    destinationFolder: '$(ApplicationFolder)'
+                    cleanDestinationFolder: false
+                    overwriteExistingFiles: true
+                    
+                - task: replacetokens@5
+                  inputs:
+                    rootDirectory: '$(ApplicationFolder)'
+                    targetFiles: '**/appsettings.*.json'
+                    encoding: 'auto'
+                    tokenPattern: 'octopus'
+                    writeBOM: true
+                    actionOnMissing: 'warn'
+                    keepToken: false
+                    actionOnNoFiles: 'continue'
+                    enableTransforms: false
+                    enableRecursion: false
+                    useLegacyPattern: false
+                    enableTelemetry: true                    
+                    
+                - task: PowerShell@2
+                  continueOnError: false
+                  displayName: 'Start Windows Service'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      Start-Service -Name "$(ServiceName)" 
+
+  - stage: DeployPRD
+    dependsOn: DeployUAT
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'Manual'))
+    displayName: Deploy PRD
+    variables:
+      - group: grp-prd
+    jobs:
+      - deployment: DEPLOY_SERVICE_NFIMPACTO_ENVIO
+        displayName: DEPLOY servicoNfImpactoEnvio
+        pool:
+          name: PRD-AZURE
+          demands: zgtsrnpttappp07
+        environment: TRANSPORTE-PRD
+        variables:
+          ServiceName: 'NFIMPACTO-ENVIO'
+          ApplicationFolder: 'D:\Servicos\NfImpacto.Envio\'
+          BinaryPathName: '$(ApplicationFolder)\NfImpacto.Envio.exe'
+          
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: git://Empresa/tools
+
+                - download: current
+                  artifact: servicoNfImpactoEnvioArtifact
+                  patterns: servicoNfImpactoEnvio.zip
+                  
+                - task: PowerShell@2
+                  displayName: 'Stop Service'
+                  inputs:
+                    filePath: 'powershell-gocd\Manage-WindowsService.ps1'
+                    arguments: '-Name $(ServiceName) -Action Stop -ErrorAction SilentlyContinue -WarningAction SilentlyContinue'
+
+                - task: ExtractFiles@1
+                  inputs:
+                    archiveFilePatterns: '$(Pipeline.Workspace)\servicoNfImpactoEnvioArtifact\servicoNfImpactoEnvio.zip'
+                    destinationFolder: '$(ApplicationFolder)'
+                    cleanDestinationFolder: false
+                    overwriteExistingFiles: true
+                    
+                - task: replacetokens@5
+                  inputs:
+                    rootDirectory: '$(ApplicationFolder)'
+                    targetFiles: '**/appsettings.*.json'
+                    encoding: 'auto'
+                    tokenPattern: 'octopus'
+                    writeBOM: true
+                    actionOnMissing: 'warn'
+                    keepToken: false
+                    actionOnNoFiles: 'continue'
+                    enableTransforms: false
+                    enableRecursion: false
+                    useLegacyPattern: false
+                    enableTelemetry: true                    
+                    
+                - task: PowerShell@2
+                  continueOnError: false
+                  displayName: 'Start Windows Service'
+                  inputs:
+                    targetType: 'inline'
+                    script: |
+                      Start-Service -Name "$(ServiceName)"                       
